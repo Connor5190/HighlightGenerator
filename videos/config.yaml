@@ -1,6 +1,0 @@
-path: /Users/connormcilhinney/Desktop/highlight_Project/data
-train: images/train
-val: images/train
-
-names:
-  0: ball
