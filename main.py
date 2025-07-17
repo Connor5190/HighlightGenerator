@@ -4,6 +4,7 @@ from ultralytics import YOLO
 from PIL import Image, ImageDraw
 import os
 import math
+import time
 
 class SoccerHighlightGenerator:
     def __init__(self):
@@ -25,23 +26,24 @@ class SoccerHighlightGenerator:
         self.players = []
         self.balls = []
         
-        # Highlight overlay
-        self.highlight_overlay = None
-        self.create_highlight_overlay()
+        # Mouse interaction
+        self.mouse_selection_mode = True  # Always in selection mode
+        self.highlighted_player = None
+        self.window_name = 'Soccer Highlight Generator'
         
-    def create_highlight_overlay(self):
-        """Create a red circle PNG overlay for highlighting players"""
-        size = 100
-        overlay = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
+        # Freeze frame functionality
+        self.freeze_frame = None
+        self.freeze_start_time = None
+        self.freeze_duration = 3.0  # 3 second freeze
+        self.is_frozen = False
         
-        # Draw red circle with transparency
-        draw.ellipse([10, 10, size-10, size-10], 
-                    outline=(255, 0, 0, 255), 
-                    fill=(255, 0, 0, 80), 
-                    width=5)
+        # Video recording
+        self.video_writer = None
+        self.output_path = None
+        self.is_recording = False
         
-        self.highlight_overlay = np.array(overlay)
+        # Highlight overlay - no longer needed as fixed overlay
+        pass
         
     def load_video(self, video_path):
         """Load video file for processing"""
@@ -138,100 +140,245 @@ class SoccerHighlightGenerator:
         return frame
     
     def add_highlight_overlay(self, frame, player):
-        """Add red circle overlay on the specified player"""
+        """Add dynamic red highlight overlay matching the player's dimensions"""
         if player is None:
             return frame
             
-        center_x, center_y = player['center']
-        overlay_size = self.highlight_overlay.shape[0]
+        x1, y1, x2, y2 = player['bbox']
         
-        # Calculate overlay position
-        start_x = max(0, center_x - overlay_size // 2)
-        start_y = max(0, center_y - overlay_size // 2)
-        end_x = min(frame.shape[1], start_x + overlay_size)
-        end_y = min(frame.shape[0], start_y + overlay_size)
+        # Calculate dimensions
+        width = x2 - x1
+        height = y2 - y1
         
-        # Adjust overlay size if it goes beyond frame boundaries
-        overlay_end_x = overlay_size - max(0, (start_x + overlay_size) - frame.shape[1])
-        overlay_end_y = overlay_size - max(0, (start_y + overlay_size) - frame.shape[0])
+        # Add padding around the player (10% of dimensions)
+        padding_x = int(width * 0.1)
+        padding_y = int(height * 0.1)
         
-        # Convert frame to RGBA for blending
-        frame_rgba = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+        # Expand bounding box with padding
+        highlight_x1 = max(0, x1 - padding_x)
+        highlight_y1 = max(0, y1 - padding_y)
+        highlight_x2 = min(frame.shape[1], x2 + padding_x)
+        highlight_y2 = min(frame.shape[0], y2 + padding_y)
         
-        # Extract the region to overlay
-        region = frame_rgba[start_y:end_y, start_x:end_x]
-        overlay_region = self.highlight_overlay[:overlay_end_y, :overlay_end_x]
+        # Create overlay with player's dimensions
+        overlay_width = highlight_x2 - highlight_x1
+        overlay_height = highlight_y2 - highlight_y1
         
-        # Blend the overlay with the frame
-        alpha = overlay_region[:, :, 3:4] / 255.0
-        blended = region * (1 - alpha) + overlay_region[:, :, :3] * alpha
+        if overlay_width <= 0 or overlay_height <= 0:
+            return frame
         
-        # Put the blended region back
-        frame_rgba[start_y:end_y, start_x:end_x] = blended.astype(np.uint8)
+        # Create dynamic overlay matching player dimensions
+        overlay = Image.new('RGBA', (overlay_width, overlay_height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
         
-        # Convert back to BGR
-        return cv2.cvtColor(frame_rgba, cv2.COLOR_RGBA2BGR)
+        # Draw red rectangle with rounded corners and transparency
+        border_width = max(3, min(width, height) // 20)  # Dynamic border width
+        
+        # Draw filled rectangle with transparency
+        draw.rectangle([0, 0, overlay_width-1, overlay_height-1], 
+                      fill=(255, 0, 0, 60))  # Semi-transparent red fill
+        
+        # Draw border
+        for i in range(border_width):
+            draw.rectangle([i, i, overlay_width-1-i, overlay_height-1-i], 
+                          outline=(255, 0, 0, 255), fill=None)
+        
+        # Convert to numpy array
+        overlay_np = np.array(overlay)
+        
+        # Extract the region to overlay from the original BGR frame
+        region = frame[highlight_y1:highlight_y2, highlight_x1:highlight_x2]
+        
+        # Ensure we have matching dimensions
+        if region.shape[:2] != overlay_np.shape[:2]:
+            return frame
+        
+        # Convert region to RGBA for blending
+        region_rgba = cv2.cvtColor(region, cv2.COLOR_BGR2RGBA)
+        
+        # Blend the overlay with the frame region
+        alpha = overlay_np[:, :, 3:4] / 255.0
+        blended = region_rgba[:, :, :3] * (1 - alpha) + overlay_np[:, :, :3] * alpha
+        
+        # Convert back to BGR and put it back in the frame
+        blended_bgr = cv2.cvtColor(blended.astype(np.uint8), cv2.COLOR_RGB2BGR)
+        frame[highlight_y1:highlight_y2, highlight_x1:highlight_x2] = blended_bgr
+        
+        return frame
+    
+    def find_player_at_position(self, x, y):
+        """Find which player (if any) was clicked at the given position"""
+        for player in self.players:
+            x1, y1, x2, y2 = player['bbox']
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                return player
+        return None
+    
+    def setup_video_writer(self):
+        """Set up video writer for saving the edited video"""
+        if not os.path.exists('output'):
+            os.makedirs('output')
+            
+        # Generate output filename
+        input_name = os.path.splitext(os.path.basename(self.video_path))[0]
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        self.output_path = f"output/{input_name}_highlighted_{timestamp}.mp4"
+        
+        # Get video properties
+        width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # Set up video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        self.video_writer = cv2.VideoWriter(self.output_path, fourcc, self.fps, (width, height))
+        self.is_recording = True
+        
+        print(f"Recording to: {self.output_path}")
+    
+    def write_frame_to_video(self, frame):
+        """Write a frame to the output video"""
+        if self.is_recording and self.video_writer is not None:
+            self.video_writer.write(frame)
+    
+    def finalize_video(self):
+        """Finalize and save the video"""
+        if self.video_writer is not None:
+            self.video_writer.release()
+            self.video_writer = None
+            self.is_recording = False
+            print(f"Video saved to: {self.output_path}")
+
+    def mouse_callback(self, event, x, y, flags, param):
+        """Handle mouse clicks for player selection"""
+        if event == cv2.EVENT_LBUTTONDOWN and not self.is_frozen:
+            clicked_player = self.find_player_at_position(x, y)
+            if clicked_player:
+                # Start freeze frame sequence
+                self.highlighted_player = clicked_player
+                self.freeze_frame = self.current_frame.copy()
+                self.freeze_start_time = time.time()
+                self.is_frozen = True
+                print(f"Selected player at ({x}, {y}) - confidence: {clicked_player['confidence']:.2f}")
+                print("Freeze frame activated for 3 seconds...")
+            else:
+                print(f"No player found at position ({x}, {y})")
     
     def play_video_interactive(self):
-        """Play video with interactive spacebar highlighting"""
+        """Play video with interactive mouse player selection"""
         if self.cap is None:
             print("No video loaded. Please load a video first.")
             return
             
         print("\n=== Interactive Video Player ===")
         print("Controls:")
-        print("- SPACEBAR: Highlight player closest to ball")
-        print("- 'q': Quit")
+        print("- MOUSE CLICK: Click on any player to highlight them")
+        print("- 'q': Quit and save video")
         print("- 'r': Reset/remove highlights")
         print("- 'p': Pause/Resume")
         print("================================\n")
         
+        # Set up video recording
+        self.setup_video_writer()
+        
+        # Set up mouse callback
+        cv2.namedWindow(self.window_name)
+        cv2.setMouseCallback(self.window_name, self.mouse_callback)
+        
         paused = False
-        highlighted_player = None
+        freeze_frames_written = 0
         
         while True:
-            if not paused:
-                ret, frame = self.cap.read()
-                if not ret:
-                    print("End of video reached.")
-                    break
+            display_frame = None
+            output_frame = None  # Frame to write to video (without UI elements)
+            
+            # Handle freeze frame logic
+            if self.is_frozen:
+                # Check if freeze duration has elapsed
+                if time.time() - self.freeze_start_time >= self.freeze_duration:
+                    # End freeze frame
+                    self.is_frozen = False
+                    self.highlighted_player = None
+                    self.freeze_frame = None
+                    freeze_frames_written = 0
+                    print("Freeze frame ended, resuming video...")
+                else:
+                    # Show frozen frame with highlight
+                    display_frame = self.draw_detections(self.freeze_frame.copy())
+                    output_frame = self.freeze_frame.copy()  # Clean frame for output
                     
-                self.current_frame = frame.copy()
-                
-                # Detect objects in current frame
-                self.detect_objects(frame)
-                
-                # Draw detection boxes
-                display_frame = self.draw_detections(frame.copy())
-                
-                # Add highlight if spacebar was pressed
-                if highlighted_player is not None:
-                    display_frame = self.add_highlight_overlay(display_frame, highlighted_player)
-                
-                # Add frame info
-                cv2.putText(display_frame, f"Players: {len(self.players)}, Balls: {len(self.balls)}", 
+                    if self.highlighted_player is not None:
+                        display_frame = self.add_highlight_overlay(display_frame, self.highlighted_player)
+                        output_frame = self.add_highlight_overlay(output_frame, self.highlighted_player)
+                    
+                    # Add freeze frame indicator (only for display, not output)
+                    cv2.putText(display_frame, "FREEZE FRAME", 
+                               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+                    
+                    # Write multiple copies of freeze frame to maintain 1-second duration
+                    freeze_frames_needed = int(self.fps * self.freeze_duration)
+                    if freeze_frames_written < freeze_frames_needed:
+                        self.write_frame_to_video(output_frame)
+                        freeze_frames_written += 1
+            else:
+                # Normal video playback
+                if not paused:
+                    ret, frame = self.cap.read()
+                    if not ret:
+                        print("End of video reached.")
+                        break
+                        
+                    self.current_frame = frame.copy()
+                    
+                    # Detect objects in current frame
+                    self.detect_objects(frame)
+                    
+                    # Draw detection boxes for display
+                    display_frame = self.draw_detections(frame.copy())
+                    
+                    # Clean frame for output (no detection boxes)
+                    output_frame = frame.copy()
+                    
+                    # Write frame to output video
+                    self.write_frame_to_video(output_frame)
+            
+            # Add frame info (if we have a display frame)
+            if display_frame is not None:
+                info_text = f"Players: {len(self.players)}, Balls: {len(self.balls)}"
+                if self.mouse_selection_mode:
+                    info_text += " | CLICK ON A PLAYER TO HIGHLIGHT"
+                if self.is_recording:
+                    info_text += " | RECORDING"
+                cv2.putText(display_frame, info_text, 
                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 
-                cv2.imshow('Soccer Highlight Generator', display_frame)
+                cv2.imshow(self.window_name, display_frame)
             
-            # Handle key presses
-            key = cv2.waitKey(int(1000/self.fps)) & 0xFF
+            # Handle key presses with appropriate wait time
+            if self.is_frozen:
+                # During freeze, check more frequently for smoother timing
+                key = cv2.waitKey(50) & 0xFF
+            else:
+                # Normal video timing
+                key = cv2.waitKey(int(1000/self.fps)) & 0xFF
             
             if key == ord('q'):
                 break
-            elif key == ord(' '):  # Spacebar
-                closest_player = self.find_closest_player_to_ball()
-                if closest_player:
-                    highlighted_player = closest_player
-                    print(f"Highlighted player closest to ball (distance calculated)")
-                else:
-                    print("No player-ball pair found to highlight")
+
             elif key == ord('r'):  # Reset highlights
-                highlighted_player = None
-                print("Highlights reset")
+                self.highlighted_player = None
+                self.mouse_selection_mode = False
+                self.is_frozen = False
+                self.freeze_frame = None
+                print("Highlights and freeze frame reset")
             elif key == ord('p'):  # Pause/Resume
-                paused = not paused
-                print("Paused" if paused else "Resumed")
+                if not self.is_frozen:
+                    paused = not paused
+                    print("Paused" if paused else "Resumed")
+                else:
+                    print("Cannot pause during freeze frame.")
+        
+        # Finalize and save the video
+        self.finalize_video()
         
         self.cap.release()
         cv2.destroyAllWindows()
@@ -275,7 +422,7 @@ def main():
     
     print("=== Soccer Highlight Generator ===")
     print("This program detects soccer players and balls using YOLOv8")
-    print("Press spacebar during video playback to highlight the player closest to the ball")
+    print("Click on any player during video playback to highlight them with a 3-second freeze frame")
     print("===================================\n")
     
     while True:
