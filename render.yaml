@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: soccer-highlight-generator
+    env: python
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+      mkdir -p uploads output static/temp
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app --timeout 300 --workers 1 --max-requests 1000
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.18
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "False"
+    disk:
+      name: soccer-highlight-data
+      mountPath: /opt/render/project/src
+      sizeGB: 10
+    healthCheckPath: /test
+    autoDeploy: true
+    plan: starter
