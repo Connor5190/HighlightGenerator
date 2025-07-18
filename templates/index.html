@@ -49,19 +49,21 @@
                         <h5>Detection Results</h5>
                     </div>
                     <div class="card-body">
-                        <div class="row">
-                            <div class="col-6">
-                                <div class="text-center">
-                                    <h3 id="playerCount" class="text-primary">0</h3>
-                                    <small>Players Detected</small>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="text-center">
-                                    <h3 id="ballCount" class="text-success">0</h3>
-                                    <small>Balls Detected</small>
-                                </div>
-                            </div>
+                        <div class="text-center">
+                            <h3 id="playerCount" class="text-primary">0</h3>
+                            <small>Players Detected</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Selected Players -->
+                <div class="card mt-3" id="selectedPlayersCard" style="display: none;">
+                    <div class="card-header">
+                        <h5>Selected Players</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="selectedPlayersList" class="d-flex flex-wrap gap-2">
+                            <!-- Selected players will be displayed here -->
                         </div>
                     </div>
                 </div>
@@ -97,7 +99,17 @@
                         <!-- Video Frames Display -->
                         <div id="videoContainer" style="display: none;">
                             <div class="mb-3">
-                                <label for="frameSlider" class="form-label">Frame: <span id="currentFrame">1</span></label>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="frameSlider" class="form-label mb-0">Frame: <span id="currentFrame">1</span> / <span id="totalFrames">1</span></label>
+                                    <div class="btn-group" role="group">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" id="prevFrameBtn" onclick="previousFrame()">
+                                            <i class="fas fa-chevron-left"></i> Previous
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" id="nextFrameBtn" onclick="nextFrame()">
+                                            Next <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                </div>
                                 <input type="range" class="form-range" id="frameSlider" 
                                        min="0" max="0" value="0" onchange="showFrame(this.value)">
                             </div>
@@ -105,7 +117,7 @@
                                 <canvas id="videoCanvas" class="img-fluid border"></canvas>
                             </div>
                             <div class="mt-2">
-                                <small class="text-muted">Use slider to navigate frames, click on players to select</small>
+                                <small class="text-muted">Use arrow keys, navigation buttons, or slider to navigate frames. Click on players to select them.</small>
                             </div>
                         </div>
 
@@ -118,17 +130,6 @@
                     </div>
                 </div>
 
-                <!-- Selected Players -->
-                <div class="card mt-3" id="selectedPlayersCard" style="display: none;">
-                    <div class="card-header">
-                        <h5>Selected Players</h5>
-                    </div>
-                    <div class="card-body">
-                        <div id="selectedPlayersList" class="d-flex flex-wrap gap-2">
-                            <!-- Selected players will be displayed here -->
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>

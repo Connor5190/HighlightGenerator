@@ -120,6 +120,12 @@ function displayVideo(data) {
     currentData.totalFrames = data.video_info.total_frames;
     currentData.fps = data.video_info.fps;
     
+    // Update total frames display
+    document.getElementById('totalFrames').textContent = data.video_info.total_frames;
+    
+    // Update navigation button states
+    updateNavigationButtons();
+    
     // Display first frame (already processed)
     displayVideoFrame(data.video_info.first_frame);
 }
@@ -129,6 +135,10 @@ function showFrame(frameIndex) {
     
     currentFrameIndex = parseInt(frameIndex);
     document.getElementById('currentFrame').textContent = currentFrameIndex + 1;
+    document.getElementById('frameSlider').value = currentFrameIndex;
+    
+    // Update navigation button states
+    updateNavigationButtons();
     
     // Show loading indicator
     const canvas = document.getElementById('videoCanvas');
@@ -424,10 +434,63 @@ function showAlert(message, type) {
     }, 5000);
 }
 
+// Frame navigation functions
+function nextFrame() {
+    if (!currentData || currentData.type !== 'video') return;
+    
+    const maxFrame = currentData.totalFrames - 1;
+    if (currentFrameIndex < maxFrame) {
+        showFrame(currentFrameIndex + 1);
+    }
+}
+
+function previousFrame() {
+    if (!currentData || currentData.type !== 'video') return;
+    
+    if (currentFrameIndex > 0) {
+        showFrame(currentFrameIndex - 1);
+    }
+}
+
+function updateNavigationButtons() {
+    if (!currentData || currentData.type !== 'video') return;
+    
+    const prevBtn = document.getElementById('prevFrameBtn');
+    const nextBtn = document.getElementById('nextFrameBtn');
+    
+    if (prevBtn && nextBtn) {
+        prevBtn.disabled = currentFrameIndex <= 0;
+        nextBtn.disabled = currentFrameIndex >= currentData.totalFrames - 1;
+    }
+}
+
+// Keyboard navigation
+function handleKeyPress(event) {
+    // Only handle arrow keys when video is displayed and not in input fields
+    if (!currentData || currentData.type !== 'video' || 
+        event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+        return;
+    }
+    
+    switch(event.key) {
+        case 'ArrowLeft':
+            event.preventDefault();
+            previousFrame();
+            break;
+        case 'ArrowRight':
+            event.preventDefault();
+            nextFrame();
+            break;
+    }
+}
+
 // Drag and drop functionality
 document.addEventListener('DOMContentLoaded', function() {
     const fileInput = document.getElementById('fileInput');
     const uploadArea = document.querySelector('.card-body');
+    
+    // Add keyboard event listener
+    document.addEventListener('keydown', handleKeyPress);
     
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         uploadArea.addEventListener(eventName, preventDefaults, false);
