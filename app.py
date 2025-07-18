@@ -336,6 +336,113 @@ class WebSoccerHighlightGenerator:
         print(f"Highlight video created successfully: {output_path}")
         print("Red rectangles appear ONLY during the 3-second freeze frame")
         return True
+    
+    def create_highlight_video_multiple_freeze_frames(self, video_path, player_selections, output_path):
+        """Create highlight video with multiple freeze frames at different points"""
+        cap = cv2.VideoCapture(video_path)
+        
+        if not cap.isOpened():
+            return False
+            
+        # Get video properties
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        # Set up video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        
+        original_frame_number = 0  # Track original video frame position
+        output_frame_count = 0     # Track output video frame count
+        freeze_duration_frames = int(fps * 1.5)  # 1.5 second freeze
+        
+        # Sort selections by frame number to process in order
+        sorted_selections = sorted(player_selections, key=lambda x: x['frameNumber'])
+        
+        print(f"Processing {total_frames} frames...")
+        print(f"Video resolution: {width}x{height}")
+        print(f"Creating {len(sorted_selections)} freeze frames at original frames: {[s['frameNumber'] for s in sorted_selections]}")
+        
+        selection_index = 0
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # Check if current ORIGINAL frame matches any selection frame
+            freeze_applied = False
+            if selection_index < len(sorted_selections) and original_frame_number == sorted_selections[selection_index]['frameNumber']:
+                current_selection = sorted_selections[selection_index]
+                print(f"Adding freeze frame effect at ORIGINAL frame {original_frame_number} for Player {current_selection['playerIndex'] + 1}")
+                
+                # Detect players in the current frame for accurate positioning
+                players, balls = self.detect_objects_in_frame(frame)
+                
+                # Create highlighted freeze frame
+                highlighted_frame = frame.copy()
+                
+                # Scale the selected player bounding box to full resolution
+                selected_player_data = current_selection['playerData']
+                scaled_bbox = self.scale_bbox_to_full_resolution(
+                    selected_player_data['bbox'], width, height
+                )
+                
+                print(f"Original bbox: {selected_player_data['bbox']}")
+                print(f"Scaled bbox: {scaled_bbox}")
+                
+                # Find closest matching player in current detections
+                scaled_selected_player = {
+                    'bbox': scaled_bbox,
+                    'center': [
+                        (scaled_bbox[0] + scaled_bbox[2]) // 2,
+                        (scaled_bbox[1] + scaled_bbox[3]) // 2
+                    ],
+                    'confidence': selected_player_data.get('confidence', 0.8)
+                }
+                
+                closest_player = self.find_closest_player_to_reference(players, scaled_selected_player)
+                if closest_player:
+                    # Use the detected player's position for accuracy
+                    highlighted_frame = self.add_highlight_overlay(highlighted_frame, closest_player['bbox'])
+                    print(f"Using detected player bbox: {closest_player['bbox']}")
+                else:
+                    # Fallback to scaled original position
+                    highlighted_frame = self.add_highlight_overlay(highlighted_frame, scaled_bbox)
+                    print(f"Using scaled original bbox: {scaled_bbox}")
+                
+                # Write the freeze frame multiple times (1.5 seconds)
+                for i in range(freeze_duration_frames):
+                    out.write(highlighted_frame)
+                    output_frame_count += 1
+                    if i % 30 == 0:  # Print every second
+                        print(f"Writing freeze frame {i+1}/{freeze_duration_frames} for Player {current_selection['playerIndex'] + 1}")
+                
+                selection_index += 1
+                freeze_applied = True
+            
+            if not freeze_applied:
+                # Normal frame processing - NO HIGHLIGHTING, just original video
+                out.write(frame)
+                output_frame_count += 1
+            
+            # Always increment original frame number (tracks position in source video)
+            original_frame_number += 1
+            
+            # Print progress based on original video frames
+            if original_frame_number % 100 == 0:
+                progress = (original_frame_number / total_frames) * 100
+                print(f"Progress: {progress:.1f}% (Original frame: {original_frame_number}/{total_frames}, Output frames: {output_frame_count})")
+        
+        cap.release()
+        out.release()
+        
+        print(f"Highlight video created successfully: {output_path}")
+        print(f"Video contains {len(sorted_selections)} freeze frames with individual player highlights")
+        print(f"Original video: {total_frames} frames, Output video: {output_frame_count} frames")
+        return True
 
 # Global generator instance
 generator = WebSoccerHighlightGenerator()
@@ -422,12 +529,10 @@ def get_frame(filename, frame_number):
 def create_highlight():
     data = request.json
     filename = data.get('filename')
-    selected_players = data.get('selected_players', [])
-    selected_frame_data = data.get('selected_frame_data', [])
-    selected_frame_number = data.get('selected_frame_number', 0)
+    player_selections = data.get('player_selections', [])
     
-    if not filename or not selected_players:
-        return jsonify({'error': 'Missing filename or selected players'}), 400
+    if not filename or not player_selections:
+        return jsonify({'error': 'Missing filename or player selections'}), 400
     
     # Get input file path
     input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -441,34 +546,19 @@ def create_highlight():
     output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
     
     try:
-        # Create highlight video using the new tracking method
-        print(f"Creating highlight video for {len(selected_players)} players...")
-        print(f"Selected frame: {selected_frame_number}")
+        # Create highlight video with multiple freeze frames
+        print(f"Creating highlight video with {len(player_selections)} freeze frames...")
         
-        # If we don't have frame data, we need to get it from the selected frame
-        if not selected_frame_data:
-            # Get the selected frame to extract player data
-            frame_data = generator.get_video_frame(input_path, selected_frame_number)
-            if frame_data and frame_data.get('players'):
-                selected_frame_data = []
-                for player_index in selected_players:
-                    if player_index < len(frame_data['players']):
-                        selected_frame_data.append(frame_data['players'][player_index])
-        
-        if not selected_frame_data:
-            return jsonify({'error': 'Could not get player data for highlighting'}), 400
-        
-        success = generator.create_highlight_video_freeze_only(
+        success = generator.create_highlight_video_multiple_freeze_frames(
             input_path, 
-            selected_frame_number,
-            selected_frame_data, 
+            player_selections,
             output_path
         )
         
         if success:
             return jsonify({
                 'status': 'success',
-                'message': f'Highlight created for {len(selected_players)} players with freeze frame at frame {selected_frame_number}',
+                'message': f'Highlight created with {len(player_selections)} freeze frames',
                 'output_file': output_filename,
                 'download_url': f'/download/{output_filename}'
             })

@@ -1,6 +1,6 @@
 // Global variables
 let currentData = null;
-let selectedPlayers = [];
+let selectedPlayers = []; // Array of player selections with their frame data
 let currentFrameIndex = 0;
 
 // File upload handling
@@ -216,12 +216,12 @@ function drawDetections(ctx, players, balls) {
         ctx.fillText('Ball', x1, y1 - 5);
     });
     
-    // Highlight selected players
+    // Highlight selected players on current frame
     ctx.strokeStyle = '#dc3545';
     ctx.lineWidth = 3;
-    selectedPlayers.forEach(playerIndex => {
-        if (playerIndex < players.length) {
-            const [x1, y1, x2, y2] = players[playerIndex].bbox;
+    selectedPlayers.forEach(selection => {
+        if (selection.frameNumber === currentFrameIndex && selection.playerIndex < players.length) {
+            const [x1, y1, x2, y2] = players[selection.playerIndex].bbox;
             ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
         }
     });
@@ -247,14 +247,38 @@ function handleCanvasClick(event, players, canvas) {
 }
 
 function togglePlayerSelection(playerIndex) {
-    const index = selectedPlayers.indexOf(playerIndex);
+    // Check if this player is already selected
+    const existingSelectionIndex = selectedPlayers.findIndex(selection => 
+        selection.playerIndex === playerIndex && selection.frameNumber === currentFrameIndex
+    );
     
-    if (index > -1) {
-        // Remove from selection
-        selectedPlayers.splice(index, 1);
+    if (existingSelectionIndex > -1) {
+        // Remove existing selection
+        selectedPlayers.splice(existingSelectionIndex, 1);
+        console.log(`Removed player ${playerIndex + 1} from frame ${currentFrameIndex + 1}`);
     } else {
-        // Add to selection
-        selectedPlayers.push(playerIndex);
+        // Add new selection with current frame data
+        const newSelection = {
+            playerIndex: playerIndex,
+            frameNumber: currentFrameIndex,
+            playerData: null,
+            frameData: null
+        };
+        
+        if (currentData.type === 'image') {
+            newSelection.frameData = {
+                players: currentData.players,
+                balls: currentData.balls
+            };
+            newSelection.frameNumber = 0;
+            newSelection.playerData = currentData.players[playerIndex];
+        } else if (currentData.type === 'video') {
+            newSelection.frameData = currentData.currentFrameData;
+            newSelection.playerData = currentData.currentFrameData.players[playerIndex];
+        }
+        
+        selectedPlayers.push(newSelection);
+        console.log(`Selected player ${playerIndex + 1} on frame ${currentFrameIndex + 1}`);
     }
     
     updateSelectedPlayersDisplay();
@@ -272,9 +296,9 @@ function updateSelectedPlayersDisplay() {
         createBtn.style.display = 'inline-block';
         clearBtn.style.display = 'inline-block';
         
-        container.innerHTML = selectedPlayers.map(index => 
+        container.innerHTML = selectedPlayers.map((selection, index) => 
             `<span class="player-chip">
-                Player ${index + 1}
+                Player ${selection.playerIndex + 1} (Frame ${selection.frameNumber + 1})
                 <span class="remove-btn" onclick="removePlayerSelection(${index})">&times;</span>
             </span>`
         ).join('');
@@ -286,10 +310,9 @@ function updateSelectedPlayersDisplay() {
     }
 }
 
-function removePlayerSelection(playerIndex) {
-    const index = selectedPlayers.indexOf(playerIndex);
-    if (index > -1) {
-        selectedPlayers.splice(index, 1);
+function removePlayerSelection(selectionIndex) {
+    if (selectionIndex >= 0 && selectionIndex < selectedPlayers.length) {
+        selectedPlayers.splice(selectionIndex, 1);
         updateSelectedPlayersDisplay();
         redrawCurrentFrame();
     }
@@ -317,12 +340,10 @@ function updateDetectionResults(data) {
     
     if (data.type === 'image') {
         document.getElementById('playerCount').textContent = data.players.length;
-        document.getElementById('ballCount').textContent = data.balls.length;
     } else if (data.type === 'video') {
         // Show detections from first frame
         const firstFrame = data.video_info.first_frame;
         document.getElementById('playerCount').textContent = firstFrame.players.length;
-        document.getElementById('ballCount').textContent = firstFrame.balls.length;
     }
 }
 
@@ -332,41 +353,7 @@ function createHighlight() {
         return;
     }
     
-    // Get current frame data to extract selected player information
-    let currentFrameData = null;
-    let selectedFrameNumber = 0;
-    
-    if (currentData.type === 'image') {
-        currentFrameData = {
-            players: currentData.players,
-            balls: currentData.balls
-        };
-        selectedFrameNumber = 0; // Images don't have frame numbers
-    } else if (currentData.type === 'video') {
-        currentFrameData = currentData.currentFrameData || currentData.video_info.first_frame;
-        selectedFrameNumber = currentFrameIndex; // Use the current frame index for freeze frame
-    }
-    
-    if (!currentFrameData || !currentFrameData.players) {
-        showAlert('No player data available. Please navigate through frames first.', 'warning');
-        return;
-    }
-    
-    // Extract selected player data
-    const selectedFrameData = [];
-    selectedPlayers.forEach(playerIndex => {
-        if (playerIndex < currentFrameData.players.length) {
-            selectedFrameData.push(currentFrameData.players[playerIndex]);
-        }
-    });
-    
-    if (selectedFrameData.length === 0) {
-        showAlert('Selected players not found in current frame', 'warning');
-        return;
-    }
-    
-    console.log('Creating highlight with player data:', selectedFrameData);
-    console.log('Selected frame number for freeze effect:', selectedFrameNumber);
+    console.log('Creating single highlight video with', selectedPlayers.length, 'freeze frames');
     
     const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
     loadingModal.show();
@@ -374,9 +361,10 @@ function createHighlight() {
     // Update loading modal text to show it's processing
     const modalBody = document.querySelector('#loadingModal .modal-body p');
     if (modalBody) {
-        modalBody.textContent = 'Creating highlight video with freeze frames and player tracking...';
+        modalBody.textContent = 'Creating highlight video with multiple freeze frames...';
     }
     
+    // Send all selections together for one video with multiple freeze frames
     fetch('/highlight', {
         method: 'POST',
         headers: {
@@ -384,9 +372,7 @@ function createHighlight() {
         },
         body: JSON.stringify({
             filename: currentData.filename,
-            selected_players: selectedPlayers,
-            selected_frame_data: selectedFrameData,
-            selected_frame_number: selectedFrameNumber
+            player_selections: selectedPlayers // Send all selections for multiple freeze frames
         })
     })
     .then(response => response.json())
@@ -398,22 +384,14 @@ function createHighlight() {
             return;
         }
         
-        showAlert(`Highlight created successfully! ${data.message}`, 'success');
-        
-        // Add download link
+        // Create success message with download link
+        let successMessage = `Highlight video created successfully with ${selectedPlayers.length} freeze frame(s)!`;
         if (data.output_file) {
-            const downloadLink = document.createElement('a');
-            downloadLink.href = data.download_url || `/download/${data.output_file}`;
-            downloadLink.textContent = 'Download Highlight Video';
-            downloadLink.className = 'btn btn-success mt-2';
-            downloadLink.target = '_blank';
-            
-            const alertDiv = document.querySelector('.alert-success');
-            if (alertDiv) {
-                alertDiv.appendChild(document.createElement('br'));
-                alertDiv.appendChild(downloadLink);
-            }
+            successMessage += `<br><a href="${data.download_url || `/download/${data.output_file}`}" class="btn btn-success mt-2" target="_blank">Download Highlight Video</a>`;
         }
+        
+        // Show persistent success alert (won't auto-hide)
+        showAlert(successMessage, 'success', true);
     })
     .catch(error => {
         loadingModal.hide();
@@ -422,16 +400,18 @@ function createHighlight() {
     });
 }
 
-function showAlert(message, type) {
+function showAlert(message, type, persistent = false) {
     const alertDiv = document.getElementById('uploadStatus');
     alertDiv.className = `alert alert-${type}`;
-    alertDiv.textContent = message;
+    alertDiv.innerHTML = message; // Use innerHTML instead of textContent to allow HTML content
     alertDiv.style.display = 'block';
     
-    // Auto-hide after 5 seconds
-    setTimeout(() => {
-        alertDiv.style.display = 'none';
-    }, 5000);
+    // Only auto-hide non-persistent alerts (not success alerts with download links)
+    if (!persistent) {
+        setTimeout(() => {
+            alertDiv.style.display = 'none';
+        }, 5000);
+    }
 }
 
 // Frame navigation functions
