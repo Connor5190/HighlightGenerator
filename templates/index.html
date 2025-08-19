@@ -265,7 +265,7 @@
                     <!-- Header -->
                     <div class="text-center mb-5">
                         <h1 class="display-4 fw-bold text-primary mb-3">
-                            Interactive Highlight Generator
+                            Highlight Generator
                         </h1>
                         <p class="lead text-muted">
                             Upload a video, select frames and players, then generate custom highlights
@@ -304,11 +304,9 @@
                                 <div class="upload-area p-5 text-center" id="uploadArea">
                                     <i class="fas fa-file-video fa-3x text-primary mb-3"></i>
                                     <h5>Drag & Drop your video file here</h5>
-                                    <p class="text-muted mb-3">or click to browse</p>
                                     <p class="small text-muted">
                                         Supported formats: MP4, AVI, MOV, MKV<br>
-                                        Maximum file size: 50MB (Free tier limit)<br>
-                                        Video processing: Up to 30 seconds
+                                        Maximum file size: 50MB <br>
                                     </p>
                                     <input type="file" id="fileInput" class="d-none" accept=".mp4,.avi,.mov,.mkv">
                                     <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
@@ -381,7 +379,7 @@
                                         </div>
                                         
                                         <!-- Frame Progress -->
-                                        <div class="progress mt-2" style="height: 8px;">
+                                        <div class="progress mt-2" id="frameProgressContainer" style="height: 8px; cursor: pointer;">
                                             <div class="progress-bar" id="frameProgressBar" role="progressbar" style="width: 0%"></div>
                                         </div>
                                     </div>
@@ -619,6 +617,24 @@
             // Add button navigation
             document.getElementById('prevFrameBtn').addEventListener('click', () => navigateFrame(-1));
             document.getElementById('nextFrameBtn').addEventListener('click', () => navigateFrame(1));
+
+            // Add click-to-seek on frame progress bar
+            const frameProgressContainer = document.getElementById('frameProgressContainer');
+            if (frameProgressContainer && !frameProgressContainer.dataset.seekHandlerAttached) {
+                frameProgressContainer.addEventListener('click', (e) => {
+                    if (frames.length === 0) return;
+                    const rect = frameProgressContainer.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    let percent = clickX / rect.width;
+                    percent = Math.max(0, Math.min(1, percent));
+                    const newIndex = Math.round(percent * (frames.length - 1));
+                    if (newIndex !== currentFrameIndex) {
+                        currentFrameIndex = newIndex;
+                        loadCurrentFrame();
+                    }
+                });
+                frameProgressContainer.dataset.seekHandlerAttached = 'true';
+            }
         }
         
         function loadCurrentFrame() {
@@ -694,11 +710,7 @@
                     }
                     playerBox.title = `Player ${player.id} (${(player.confidence * 100).toFixed(1)}% confidence)`;
                     
-                    // Add player label
-                    const label = document.createElement('div');
-                    label.className = 'player-label';
-                    label.textContent = player.id;
-                    playerBox.appendChild(label);
+                    // No numeric labels above players
                     
                     // Check if this player is already selected
                     if (selectedPlayers.has(frame.frame_number) && 
