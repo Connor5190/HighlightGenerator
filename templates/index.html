@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Highlight Generator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .main-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            transition: all 0.3s ease;
+            background: rgba(102, 126, 234, 0.05);
+        }
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: rgba(118, 75, 162, 0.1);
+        }
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: rgba(118, 75, 162, 0.2);
+            transform: scale(1.02);
+        }
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 25px;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        .progress {
+            height: 25px;
+            border-radius: 15px;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        .progress-bar {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border-radius: 15px;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+        .feature-icon {
+            font-size: 3rem;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .status-processing {
+            background: rgba(255, 193, 7, 0.2);
+            color: #856404;
+        }
+        .status-completed {
+            background: rgba(40, 167, 69, 0.2);
+            color: #155724;
+        }
+        .status-error {
+            background: rgba(220, 53, 69, 0.2);
+            color: #721c24;
+        }
+        .frame-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        .frame-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+        }
+        .frame-card.selected {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        .player-box {
+            position: absolute;
+            border: 2px solid #00ff00;
+            background: rgba(0, 255, 0, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .player-box:hover {
+            border-color: #ff0000;
+            background: rgba(255, 0, 0, 0.3);
+        }
+        .player-box.selected {
+            border-color: #ff0000;
+            background: rgba(255, 0, 0, 0.4);
+        }
+        .frame-container {
+            position: relative;
+            display: inline-block;
+        }
+        .frame-image {
+            max-width: 100%;
+            height: auto;
+        }
+        .workflow-step {
+            display: none;
+        }
+        .workflow-step.active {
+            display: block;
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            margin: 0 1rem;
+            color: #6c757d;
+        }
+        .step.active {
+            color: #667eea;
+            font-weight: bold;
+        }
+        .step.completed {
+            color: #28a745;
+        }
+        .step-number {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 0.5rem;
+            font-weight: bold;
+        }
+        .step.active .step-number {
+            background: #667eea;
+            color: white;
+        }
+        .step.completed .step-number {
+            background: #28a745;
+            color: white;
+        }
+        .video-player-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .frame-display-container {
+            position: relative;
+            display: inline-block;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #000;
+        }
+        .frame-display {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+        .player-overlays {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .player-box {
+            position: absolute;
+            border: 2px solid #00ff00;
+            background: rgba(0, 255, 0, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            pointer-events: auto;
+        }
+        .player-box:hover {
+            border-color: #ff0000;
+            background: rgba(255, 0, 0, 0.3);
+            transform: scale(1.05);
+        }
+        .player-box.selected {
+            border-color: #ff0000;
+            background: rgba(255, 0, 0, 0.4);
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+        }
+        .player-label {
+            position: absolute;
+            top: -25px;
+            left: 0;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .navigation-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .selection-summary {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .selection-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .selection-item .remove-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .selection-item .remove-btn:hover {
+            background: #c82333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-12">
+                <div class="main-container p-5">
+                    <!-- Header -->
+                    <div class="text-center mb-5">
+                        <h1 class="display-4 fw-bold text-primary mb-3">
+                            <i class="fas fa-futbol me-3"></i>
+                            Interactive Highlight Generator
+                        </h1>
+                        <p class="lead text-muted">
+                            Upload a video, select frames and players, then generate custom highlights
+                        </p>
+                    </div>
+
+                    <!-- Workflow Steps -->
+                    <div class="step-indicator">
+                        <div class="step active" id="step1">
+                            <div class="step-number">1</div>
+                            <span>Upload Video</span>
+                        </div>
+                        <div class="step" id="step2">
+                            <div class="step-number">2</div>
+                            <span>Analyze Video</span>
+                        </div>
+                        <div class="step" id="step3">
+                            <div class="step-number">3</div>
+                            <span>Select Highlights</span>
+                        </div>
+                        <div class="step" id="step4">
+                            <div class="step-number">4</div>
+                            <span>Generate Video</span>
+                        </div>
+                    </div>
+
+                    <!-- Step 1: Upload Video -->
+                    <div class="workflow-step active" id="step1-content">
+                        <div class="card">
+                            <div class="card-body p-4">
+                                <h4 class="card-title mb-4">
+                                    <i class="fas fa-cloud-upload-alt me-2"></i>
+                                    Upload Your Video
+                                </h4>
+                                
+                                <div class="upload-area p-5 text-center" id="uploadArea">
+                                    <i class="fas fa-file-video fa-3x text-primary mb-3"></i>
+                                    <h5>Drag & Drop your video file here</h5>
+                                    <p class="text-muted mb-3">or click to browse</p>
+                                    <p class="small text-muted">
+                                        Supported formats: MP4, AVI, MOV, MKV<br>
+                                        Maximum file size: 50MB (Free tier limit)<br>
+                                        Video processing: Up to 30 seconds
+                                    </p>
+                                    <input type="file" id="fileInput" class="d-none" accept=".mp4,.avi,.mov,.mkv">
+                                    <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                                        <i class="fas fa-folder-open me-2"></i>
+                                        Choose Video File
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Video Analysis -->
+                    <div class="workflow-step" id="step2-content">
+                        <div class="card">
+                            <div class="card-body p-4">
+                                <h4 class="card-title mb-4">
+                                    <i class="fas fa-cog fa-spin me-2"></i>
+                                    Analyzing Video
+                                </h4>
+                                
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span id="analysisStatusText">Starting analysis...</span>
+                                        <span id="analysisProgressText">0%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar" id="analysisProgressBar" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div id="analysisMessage" class="text-muted"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Frame Selection -->
+                    <div class="workflow-step" id="step3-content">
+                        <div class="card">
+                            <div class="card-body p-4">
+                                <h4 class="card-title mb-4">
+                                    <i class="fas fa-mouse-pointer me-2"></i>
+                                    Select Players to Highlight
+                                </h4>
+                                
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    Use <strong>← → arrow keys</strong> to navigate through frames. Click on players to select them for highlighting.
+                                </div>
+                                
+                                <!-- Video Player Interface -->
+                                <div class="text-center mb-4">
+                                    <div class="video-player-container">
+                                        <div class="frame-display-container">
+                                            <img id="currentFrame" class="frame-display" alt="Current Frame">
+                                            <div id="playerOverlays" class="player-overlays"></div>
+                                        </div>
+                                        
+                                        <!-- Navigation Controls -->
+                                        <div class="navigation-controls mt-3">
+                                            <button class="btn btn-outline-primary" id="prevFrameBtn">
+                                                <i class="fas fa-chevron-left"></i> Previous Frame
+                                            </button>
+                                            <span class="mx-3">
+                                                Frame <span id="currentFrameNumber">0</span> of <span id="totalFrames">0</span>
+                                                (<span id="currentTimestamp">0.0s</span>)
+                                            </span>
+                                            <button class="btn btn-outline-primary" id="nextFrameBtn">
+                                                Next Frame <i class="fas fa-chevron-right"></i>
+                                            </button>
+                                        </div>
+                                        
+                                        <!-- Frame Progress -->
+                                        <div class="progress mt-2" style="height: 8px;">
+                                            <div class="progress-bar" id="frameProgressBar" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Selection Summary -->
+                                <div class="selection-summary">
+                                    <h6>Selected Highlights:</h6>
+                                    <div id="selectionList" class="mb-3">
+                                        <p class="text-muted">No selections yet. Navigate through frames and click on players to select them.</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-4">
+                                    <button class="btn btn-primary" id="generateBtn" disabled>
+                                        <i class="fas fa-play me-2"></i>
+                                        Generate Highlighted Video
+                                    </button>
+                                    <button class="btn btn-outline-secondary ms-2" onclick="resetWorkflow()">
+                                        <i class="fas fa-redo me-2"></i>
+                                        Start Over
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Video Generation -->
+                    <div class="workflow-step" id="step4-content">
+                        <div class="card">
+                            <div class="card-body p-4">
+                                <h4 class="card-title mb-4">
+                                    <i class="fas fa-video me-2"></i>
+                                    Generating Highlighted Video
+                                </h4>
+                                
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span id="generationStatusText">Starting generation...</span>
+                                        <span id="generationProgressText">0%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar" id="generationProgressBar" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                
+                                <div id="generationMessage" class="text-muted"></div>
+                                
+                                <div id="downloadSection" class="mt-4 d-none">
+                                    <div class="alert alert-success">
+                                        <i class="fas fa-check-circle me-2"></i>
+                                        Video generation completed successfully!
+                                    </div>
+                                    <button class="btn btn-success" id="downloadBtn">
+                                        <i class="fas fa-download me-2"></i>
+                                        Download Highlighted Video
+                                    </button>
+                                    <button class="btn btn-outline-primary ms-2" onclick="resetWorkflow()">
+                                        <i class="fas fa-plus me-2"></i>
+                                        Process Another Video
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Error Display -->
+                    <div id="errorDisplay" class="d-none">
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <span id="errorMessage"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentAnalysisTaskId = null;
+        let currentProcessingTaskId = null;
+        let analysisStatusInterval = null;
+        let processingStatusInterval = null;
+        let selectedFrames = new Set();
+        let selectedPlayers = new Map(); // frame_number -> player_data
+        let analysisData = null;
+        let currentFrameIndex = 0;
+        let frames = [];
+
+        // File upload handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        // Drag and drop functionality
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            // Validate file type
+            const allowedTypes = ['video/mp4', 'video/avi', 'video/quicktime', 'video/x-matroska'];
+            if (!allowedTypes.includes(file.type)) {
+                showError('Invalid file type. Please upload a video file (MP4, AVI, MOV, MKV).');
+                return;
+            }
+
+            // Validate file size (50MB for free tier)
+            if (file.size > 50 * 1024 * 1024) {
+                showError('File size too large. Maximum size is 50MB for the free tier.');
+                return;
+            }
+
+            uploadFile(file);
+        }
+
+        function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Show analysis step
+            showStep(2);
+            hideError();
+
+            fetch('/analyze', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                    showStep(1);
+                } else {
+                    currentAnalysisTaskId = data.task_id;
+                    startAnalysisPolling();
+                }
+            })
+            .catch(error => {
+                showError('Upload failed: ' + error.message);
+                showStep(1);
+            });
+        }
+
+        function startAnalysisPolling() {
+            if (analysisStatusInterval) {
+                clearInterval(analysisStatusInterval);
+            }
+
+            analysisStatusInterval = setInterval(() => {
+                fetch(`/analysis-status/${currentAnalysisTaskId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            showError(data.error);
+                            stopAnalysisPolling();
+                            showStep(1);
+                        } else {
+                            updateAnalysisProgress(data.progress, data.message);
+                            
+                            if (data.status === 'completed') {
+                                stopAnalysisPolling();
+                                analysisData = data;
+                                showStep(3);
+                                loadFrames(data.frames);
+                            } else if (data.status === 'error') {
+                                stopAnalysisPolling();
+                                showError(data.message);
+                                showStep(1);
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        showError('Analysis status check failed: ' + error.message);
+                        stopAnalysisPolling();
+                        showStep(1);
+                    });
+            }, 2000);
+        }
+
+        function stopAnalysisPolling() {
+            if (analysisStatusInterval) {
+                clearInterval(analysisStatusInterval);
+                analysisStatusInterval = null;
+            }
+        }
+
+        function updateAnalysisProgress(progress, message) {
+            document.getElementById('analysisProgressBar').style.width = progress + '%';
+            document.getElementById('analysisProgressText').textContent = Math.round(progress) + '%';
+            document.getElementById('analysisMessage').textContent = message || '';
+        }
+
+        function loadFrames(framesData) {
+            frames = framesData;
+            currentFrameIndex = 0;
+            
+            // Debug: Log the first frame data
+            if (frames.length > 0) {
+                console.log('First frame data:', frames[0]);
+                if (frames[0].players.length > 0) {
+                    console.log('First player data:', frames[0].players[0]);
+                }
+            }
+            
+            // Update total frames display
+            document.getElementById('totalFrames').textContent = frames.length;
+            
+            // Load first frame
+            loadCurrentFrame();
+            
+            // Add keyboard navigation
+            document.addEventListener('keydown', handleKeyNavigation);
+            
+            // Add button navigation
+            document.getElementById('prevFrameBtn').addEventListener('click', () => navigateFrame(-1));
+            document.getElementById('nextFrameBtn').addEventListener('click', () => navigateFrame(1));
+        }
+        
+        function loadCurrentFrame() {
+            if (frames.length === 0) return;
+            
+            const frame = frames[currentFrameIndex];
+            const frameImg = document.getElementById('currentFrame');
+            const overlaysContainer = document.getElementById('playerOverlays');
+            
+            // Load frame image
+            frameImg.src = `/frame/${frame.frame_path}`;
+            
+            // Update frame info
+            document.getElementById('currentFrameNumber').textContent = currentFrameIndex + 1;
+            document.getElementById('currentTimestamp').textContent = frame.timestamp.toFixed(1) + 's';
+            
+            // Update progress bar
+            const progress = ((currentFrameIndex + 1) / frames.length) * 100;
+            document.getElementById('frameProgressBar').style.width = progress + '%';
+            
+            // Clear previous overlays
+            overlaysContainer.innerHTML = '';
+            
+            // Wait for image to load before positioning overlays
+            frameImg.onload = function() {
+                // Calculate scaling factors
+                const displayWidth = frameImg.offsetWidth;
+                const displayHeight = frameImg.offsetHeight;
+                const originalWidth = frameImg.naturalWidth;
+                const originalHeight = frameImg.naturalHeight;
+                
+                const scaleX = displayWidth / originalWidth;
+                const scaleY = displayHeight / originalHeight;
+                
+                // Debug logging
+                console.log('Image scaling:', {
+                    original: `${originalWidth}x${originalHeight}`,
+                    display: `${displayWidth}x${displayHeight}`,
+                    scale: `${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`
+                });
+                
+                // Add player overlays
+                frame.players.forEach(player => {
+                    const playerBox = document.createElement('div');
+                    playerBox.className = 'player-box';
+                    playerBox.dataset.playerId = player.id;
+                    playerBox.dataset.playerCenter = player.center;
+                    
+                    // Scale the bounding box coordinates
+                    // bbox is stored as a tuple: (x1, y1, x2, y2)
+                    const bbox = player.bbox;
+                    const scaledX = bbox[0] * scaleX;
+                    const scaledY = bbox[1] * scaleY;
+                    const scaledWidth = (bbox[2] - bbox[0]) * scaleX;
+                    const scaledHeight = (bbox[3] - bbox[1]) * scaleY;
+                    
+                    playerBox.style.left = scaledX + 'px';
+                    playerBox.style.top = scaledY + 'px';
+                    playerBox.style.width = scaledWidth + 'px';
+                    playerBox.style.height = scaledHeight + 'px';
+                    
+                    // Debug logging for first player
+                    if (player.id === 0) {
+                        console.log('Player box positioning:', {
+                            player: player,
+                            bbox: player.bbox,
+                            bboxType: typeof player.bbox,
+                            bboxLength: player.bbox ? player.bbox.length : 'undefined',
+                            original: player.bbox,
+                            scaled: [scaledX, scaledY, scaledWidth, scaledHeight],
+                            scaleFactors: { scaleX, scaleY }
+                        });
+                    }
+                    playerBox.title = `Player ${player.id} (${(player.confidence * 100).toFixed(1)}% confidence)`;
+                    
+                    // Add player label
+                    const label = document.createElement('div');
+                    label.className = 'player-label';
+                    label.textContent = player.id;
+                    playerBox.appendChild(label);
+                    
+                    // Check if this player is already selected
+                    if (selectedPlayers.has(frame.frame_number) && 
+                        selectedPlayers.get(frame.frame_number).id === player.id) {
+                        playerBox.classList.add('selected');
+                    }
+                    
+                    // Add click handler
+                    playerBox.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        
+                        // Remove previous selection for this frame
+                        overlaysContainer.querySelectorAll('.player-box').forEach(box => {
+                            box.classList.remove('selected');
+                        });
+                        
+                        // Select this player
+                        this.classList.add('selected');
+                        selectedPlayers.set(frame.frame_number, {
+                            id: player.id,
+                            center: player.center
+                        });
+                        
+                        updateSelectionList();
+                        updateGenerateButton();
+                    });
+                    
+                    overlaysContainer.appendChild(playerBox);
+                });
+            };
+            
+            // Update navigation buttons
+            document.getElementById('prevFrameBtn').disabled = currentFrameIndex === 0;
+            document.getElementById('nextFrameBtn').disabled = currentFrameIndex === frames.length - 1;
+        }
+        
+        function navigateFrame(direction) {
+            const newIndex = currentFrameIndex + direction;
+            if (newIndex >= 0 && newIndex < frames.length) {
+                currentFrameIndex = newIndex;
+                loadCurrentFrame();
+            }
+        }
+        
+        function handleKeyNavigation(e) {
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                navigateFrame(-1);
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                navigateFrame(1);
+            }
+        }
+        
+        function updateSelectionList() {
+            const selectionList = document.getElementById('selectionList');
+            
+            if (selectedPlayers.size === 0) {
+                selectionList.innerHTML = '<p class="text-muted">No selections yet. Navigate through frames and click on players to select them.</p>';
+                return;
+            }
+            
+            let html = '';
+            selectedPlayers.forEach((player, frameNumber) => {
+                const frame = frames.find(f => f.frame_number === frameNumber);
+                const playerData = frame.players.find(p => p.id === player.id);
+                
+                html += `
+                    <div class="selection-item">
+                        <div>
+                            <strong>Frame ${frameNumber}</strong> (${frame.timestamp.toFixed(1)}s) - 
+                            <strong>Player ${player.id}</strong> (${(playerData.confidence * 100).toFixed(1)}% confidence)
+                        </div>
+                        <button class="remove-btn" onclick="removeSelection(${frameNumber})">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `;
+            });
+            
+            selectionList.innerHTML = html;
+        }
+        
+        function removeSelection(frameNumber) {
+            selectedPlayers.delete(frameNumber);
+            updateSelectionList();
+            updateGenerateButton();
+            
+            // Update current frame display if we're on that frame
+            if (currentFrameIndex < frames.length && frames[currentFrameIndex].frame_number === frameNumber) {
+                loadCurrentFrame();
+            }
+        }
+
+        function updateGenerateButton() {
+            const generateBtn = document.getElementById('generateBtn');
+            generateBtn.disabled = selectedPlayers.size === 0;
+        }
+
+        document.getElementById('generateBtn').addEventListener('click', function() {
+            const selections = [];
+            selectedPlayers.forEach((player, frameNumber) => {
+                selections.push({
+                    frame_number: frameNumber,
+                    player_center: player.center
+                });
+            });
+
+            if (selections.length === 0) {
+                showError('Please select at least one player to highlight.');
+                return;
+            }
+
+            showStep(4);
+            processSelections(selections);
+        });
+
+        function processSelections(selections) {
+            fetch('/process-selections', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    task_id: currentAnalysisTaskId,
+                    selections: selections
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                    showStep(3);
+                } else {
+                    currentProcessingTaskId = data.task_id;
+                    startProcessingPolling();
+                }
+            })
+            .catch(error => {
+                showError('Processing failed: ' + error.message);
+                showStep(3);
+            });
+        }
+
+        function startProcessingPolling() {
+            if (processingStatusInterval) {
+                clearInterval(processingStatusInterval);
+            }
+
+            processingStatusInterval = setInterval(() => {
+                fetch(`/status/${currentProcessingTaskId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            showError(data.error);
+                            stopProcessingPolling();
+                            showStep(3);
+                        } else {
+                            updateGenerationProgress(data.progress, data.message);
+                            
+                            if (data.status === 'completed') {
+                                stopProcessingPolling();
+                                showDownloadSection();
+                            } else if (data.status === 'error') {
+                                stopProcessingPolling();
+                                showError(data.message);
+                                showStep(3);
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        showError('Processing status check failed: ' + error.message);
+                        stopProcessingPolling();
+                        showStep(3);
+                    });
+            }, 2000);
+        }
+
+        function stopProcessingPolling() {
+            if (processingStatusInterval) {
+                clearInterval(processingStatusInterval);
+                processingStatusInterval = null;
+            }
+        }
+
+        function updateGenerationProgress(progress, message) {
+            document.getElementById('generationProgressBar').style.width = progress + '%';
+            document.getElementById('generationProgressText').textContent = Math.round(progress) + '%';
+            document.getElementById('generationMessage').textContent = message || '';
+        }
+
+        function showDownloadSection() {
+            document.getElementById('downloadSection').classList.remove('d-none');
+            
+            // Set up download button
+            document.getElementById('downloadBtn').onclick = () => {
+                if (currentProcessingTaskId) {
+                    window.location.href = `/download/${currentProcessingTaskId}`;
+                }
+            };
+        }
+
+        function showStep(stepNumber) {
+            // Hide all steps
+            document.querySelectorAll('.workflow-step').forEach(step => {
+                step.classList.remove('active');
+            });
+
+            // Show selected step
+            document.getElementById(`step${stepNumber}-content`).classList.add('active');
+
+            // Update step indicators
+            document.querySelectorAll('.step').forEach((step, index) => {
+                step.classList.remove('active', 'completed');
+                if (index + 1 < stepNumber) {
+                    step.classList.add('completed');
+                } else if (index + 1 === stepNumber) {
+                    step.classList.add('active');
+                }
+            });
+        }
+
+        function resetWorkflow() {
+            // Reset variables
+            selectedFrames.clear();
+            selectedPlayers.clear();
+            analysisData = null;
+            currentAnalysisTaskId = null;
+            currentProcessingTaskId = null;
+            currentFrameIndex = 0;
+            frames = [];
+
+            // Stop polling
+            stopAnalysisPolling();
+            stopProcessingPolling();
+
+            // Remove keyboard event listener
+            document.removeEventListener('keydown', handleKeyNavigation);
+
+            // Reset UI
+            showStep(1);
+            hideError();
+            fileInput.value = '';
+            document.getElementById('downloadSection').classList.add('d-none');
+        }
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorDisplay').classList.remove('d-none');
+        }
+
+        function hideError() {
+            document.getElementById('errorDisplay').classList.add('d-none');
+        }
+    </script>
+</body>
+</html> 

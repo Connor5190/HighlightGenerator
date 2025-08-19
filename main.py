@@ -150,9 +150,9 @@ class SoccerHighlightGenerator:
         width = x2 - x1
         height = y2 - y1
         
-        # Add padding around the player (10% of dimensions)
-        padding_x = int(width * 0.1)
-        padding_y = int(height * 0.1)
+        # Add padding around the player (20% of dimensions for more visibility)
+        padding_x = int(width * 0.2)
+        padding_y = int(height * 0.2)
         
         # Expand bounding box with padding
         highlight_x1 = max(0, x1 - padding_x)
@@ -172,13 +172,13 @@ class SoccerHighlightGenerator:
         draw = ImageDraw.Draw(overlay)
         
         # Draw red rectangle with rounded corners and transparency
-        border_width = max(3, min(width, height) // 20)  # Dynamic border width
+        border_width = max(3, min(width, height) // 30)  # Thinner border for subtlety
         
-        # Draw filled rectangle with transparency
+        # Draw filled rectangle with less opacity for more transparency
         draw.rectangle([0, 0, overlay_width-1, overlay_height-1], 
-                      fill=(255, 0, 0, 60))  # Semi-transparent red fill
+                      fill=(255, 0, 0, 80))  # More transparent red fill
         
-        # Draw border
+        # Draw border with thinner lines for subtlety
         for i in range(border_width):
             draw.rectangle([i, i, overlay_width-1-i, overlay_height-1-i], 
                           outline=(255, 0, 0, 255), fill=None)
@@ -416,6 +416,58 @@ class SoccerHighlightGenerator:
         cv2.imshow('Detection Result', result_frame)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
+
+    def process_single_image_web(self, image_path):
+        """Process a single image for web API"""
+        if not os.path.exists(image_path):
+            return {'error': f'Image file not found: {image_path}'}
+            
+        frame = cv2.imread(image_path)
+        if frame is None:
+            return {'error': f'Could not load image: {image_path}'}
+        
+        # Detect objects
+        self.detect_objects(frame)
+        
+        # Find closest player to ball
+        closest_player = self.find_closest_player_to_ball()
+        
+        # Prepare result
+        result = {
+            'players_detected': len(self.players),
+            'balls_detected': len(self.balls),
+            'players': [],
+            'balls': [],
+            'highlighted_player': None
+        }
+        
+        # Add player details
+        for i, player in enumerate(self.players):
+            result['players'].append({
+                'id': i,
+                'bbox': player['bbox'],
+                'center': player['center'],
+                'confidence': player['confidence']
+            })
+        
+        # Add ball details
+        for i, ball in enumerate(self.balls):
+            result['balls'].append({
+                'id': i,
+                'bbox': ball['bbox'],
+                'center': ball['center'],
+                'confidence': ball['confidence']
+            })
+        
+        # Add highlighted player info
+        if closest_player:
+            result['highlighted_player'] = {
+                'bbox': closest_player['bbox'],
+                'center': closest_player['center'],
+                'confidence': closest_player['confidence']
+            }
+        
+        return result
 
 def main():
     generator = SoccerHighlightGenerator()

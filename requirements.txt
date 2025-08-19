@@ -1,5 +1,7 @@
-ultralytics
-opencv-python
-pillow
-numpy
-matplotlib
+flask==2.3.3
+opencv-python==4.8.1.78
+ultralytics==8.0.196
+pillow==10.0.1
+numpy<2.0.0
+torch<2.6.0
+torchvision<0.21.0
